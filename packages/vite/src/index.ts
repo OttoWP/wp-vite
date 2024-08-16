@@ -12,13 +12,13 @@ import {flattenToStringArray} from "./helpers/arrays";
 import {InputPluginOption} from "rollup";
 
 export interface WpViteOptions extends WpViteBundlerOptions {
-    dir: string;
-    css: string;
+    dir?: string;
+    css?: string;
     keepOutDir?: string[];
 }
 
 
-export default function wpVite(userOptions: WpViteOptions): Vite.Plugin {
+export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
     const options: WpViteOptions = deepMerge(
         {
             dir: process.cwd(),
@@ -51,9 +51,13 @@ export default function wpVite(userOptions: WpViteOptions): Vite.Plugin {
 
             // Resolve entry paths.
             (['entries', 'interactivity'] as const).forEach((entriesKey) => {
-                options.input[entriesKey] = fg.sync(
-                    options.input[entriesKey].map((pathPattern) => path.resolve(options.dir, root, ...pathPattern))
-                );
+                if (options.input) {
+                    options.input[entriesKey] = fg.sync(
+                        options.input[entriesKey].map((pathPattern) => {
+                            return options.dir ? path.resolve(options.dir, root, ...pathPattern) : ''
+                        })
+                    );
+                }
             });
 
             /**
@@ -67,7 +71,7 @@ export default function wpVite(userOptions: WpViteOptions): Vite.Plugin {
              * CSS Options.
              */
             const cssOptions: Vite.CSSOptions = {
-                postcss: path.resolve(options.dir, './postcss.config.js'),
+                postcss: options.dir ? path.resolve(options.dir, './postcss.config.js') : '',
                 devSourcemap: true
             }
 
@@ -122,13 +126,13 @@ export default function wpVite(userOptions: WpViteOptions): Vite.Plugin {
              * Rollup Options.
              */
             const rollupOptions: Rollup.RollupOptions = {
-                input: (() => [
+                input: (() => options.input ? [
                     ...flattenToStringArray(options.input.entries),
                     ...flattenToStringArray(options.input.interactivity)
-                ].filter(file => file.endsWith('.js')))(),
+                ].filter(file => file.endsWith('.js')) : [])(),
                 output: {
                     entryFileNames: (assetInfo) => {
-                        if (assetInfo.facadeModuleId) {
+                        if (assetInfo.facadeModuleId && options.output && options.source) {
                             return options.output(`js/[name].[hash].js`, options.source(root, assetInfo.facadeModuleId), 'js');
                         } else {
                             return `js/[name].[hash].js`
@@ -145,7 +149,7 @@ export default function wpVite(userOptions: WpViteOptions): Vite.Plugin {
              */
             const rollupPlugins: InputPluginOption = [
                 // Ensures globals are NOT using "import" in the compiled files but are defined externally.
-                externalGlobals(globals, {exclude: flattenToStringArray(options.input.interactivity)}/*Make sure we ignore modules*/),
+                externalGlobals(globals, {exclude: options.input ? flattenToStringArray(options.input.interactivity) : []}/*Make sure we ignore modules*/),
 
                 // Ensures we can empty out the dir with rules in case the build folder is used for something else as well.
                 wpViteEmptyDir(options),
