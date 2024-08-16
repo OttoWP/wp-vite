@@ -9,6 +9,7 @@ import {minify, MinifyOptions} from 'terser';
 import {parseFilePath} from '../helpers/strings';
 import {varExport} from '../helpers/object';
 import {flattenToStringArray} from "../helpers/arrays";
+
 export interface WpViteBundlerOptions {
 
     /**
@@ -134,54 +135,42 @@ export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): 
     };
 
     /**
-     * Images, SVG's, Fonts etc..
+     * Function to gather assets based on provided regex rules
      */
     const getAssets = () => {
-        if (options.assets) {
-            const assets: string[] = [];
+        if (!options.assets) return null;
 
-            Object.keys(options.assets).forEach(assetFolder => {
-                fg.sync([
-                    ['**', assetFolder, '**'], [assetFolder, '**'],
-                ].map(pathPattern => path.resolve(ViteConfig.root, ...pathPattern))).forEach(assetPath => {
-                    assets.push(assetPath);
-                });
-            });
+        const assetPaths: Record<string, string[]> = {};
 
-            // Group by assets key
-            return assets.reduce<Record<string, string[]>>((acc, file) => {
-                for (const [key, regex] of Object.entries((options.assets?? {}))) {
-                    if (regex.test(file)) {
-                        acc[key].push(file);
-                        return acc;
-                    }
-                }
-                return acc;
-            }, Object.fromEntries([...Object.keys((options.assets ?? {}))].map(key => [key, []])));
-        } else {
-            return null;
+        for (const key in options.assets) {
+            if (!assetPaths[key]) {
+                assetPaths[key] = fg.sync([path.resolve(ViteConfig.root, '**', key, '**')]);
+            }
         }
+
+        return assetPaths
     };
 
     /**
-     * Things that are part of entries (JSON & PHP files)
+     * Function to gather entry files and group them by extension
      */
-    const getEntries = () => {
-        if (options.input) {
-            const entries = flattenToStringArray(options.input.entries).filter(file => !file.endsWith('.js') && !file.endsWith(`.${options.css}`));
+    const getEntries = (): Record<string, string[]> | null => {
+        if (!options.input) return null;
 
-            // Group by extension
-            return entries.reduce((emits: { [ext: string]: string[] }, entry: string) => {
-                const ext = path.extname(entry).toLowerCase();
-                if (!emits[ext]) {
-                    emits[ext] = [];
-                }
-                emits[ext].push(entry);
-                return emits;
-            }, {} as { [ext: string]: string[] });
-        } else {
-            return null;
-        }
+        const entriesByExtension: Record<string, string[]> = {};
+        const entries = flattenToStringArray(options.input.entries).filter(file => {
+            return !file.endsWith('.js') && !file.endsWith(`.${options.css}`)
+        });
+
+        entries.forEach(entry => {
+            const ext = path.extname(entry).toLowerCase();
+            if (!entriesByExtension[ext]) {
+                entriesByExtension[ext] = [];
+            }
+            entriesByExtension[ext].push(entry);
+        });
+
+        return entriesByExtension;
     };
 
     return {
@@ -191,44 +180,40 @@ export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): 
             ViteConfig = resolvedConfig;
         },
 
+        /**
+         * Build Start Hook.
+         */
         async buildStart() {
             const assets = getAssets();
             const entries = getEntries();
-
-            // Emit entries
             if (entries) {
                 for (const ext in entries) {
                     entries[ext].forEach(entryPath => {
                         if (options.source && options.output) {
                             const source = options.source(path.basename(ViteConfig.root), entryPath);
-                            const output = options.output(`${source.ext}/[name]${ext}`, source, source.ext).replace(/\[name\]/g, source.fileName);
-                            const name = path.relative(path.resolve(ViteConfig.root), source.path);
+                            const output = options.output(`${source.ext}/[name]${ext}`, source, source.ext);
                             this.emitFile({
                                 type: 'asset',
-                                fileName: output,
+                                fileName: output.replace(/\[name\]/g, source.fileName),
                                 originalFileName: `${source.fileName}${ext}`,
                                 source: fs.readFileSync(source.path),
-                                name: name,
+                                name: path.relative(path.resolve(ViteConfig.root), source.path),
                             });
                         }
                     });
                 }
             }
-
-            // Emit assets
             if (assets) {
                 for (const type in assets) {
                     assets[type].forEach(assetPath => {
                         if (options.source) {
                             const source = options.source(path.basename(ViteConfig.root), assetPath);
-                            const output = `${type}/${source.fileName}.${source.ext}`;
-                            const name = path.relative(path.resolve(ViteConfig.root), source.path);
                             this.emitFile({
                                 type: 'asset',
-                                fileName: output,
+                                fileName: `${type}/${source.fileName}.${source.ext}`,
                                 originalFileName: `${source.fileName}.${source.ext}`,
                                 source: fs.readFileSync(source.path),
-                                name: name,
+                                name: path.relative(path.resolve(ViteConfig.root), source.path),
                             });
                         }
                     });
@@ -236,6 +221,12 @@ export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): 
             }
         },
 
+        /**
+         * Generate Bundle Hook.
+         *
+         * @param bundleOptions
+         * @param bundle
+         */
         async generateBundle(bundleOptions: Rollup.NormalizedOutputOptions, bundle: Rollup.OutputBundle) {
             const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0, 20);
             const styles: { [cssOrigin: string]: string } = {};
@@ -351,9 +342,10 @@ ${options.globalsWrapper.footer}
             });
         },
 
+        /**
+         * Close Bundle hook.
+         */
         closeBundle() {
-
-            // Create the PHP manifest file
             if (options.phpManifest && options.manifest) {
                 const manifestPath = path.resolve(ViteConfig.root, ViteConfig.build.outDir, options.manifest);
                 const phpManifestPath = path.resolve(path.dirname(manifestPath), 'manifest.php');
@@ -372,9 +364,13 @@ ${options.globalsWrapper.footer}
             }
         },
 
+        /**
+         * Handle Hot Update hook.
+         *
+         * @param file
+         * @param server
+         */
         handleHotUpdate({file, server}) {
-
-            // Handle hot update for PHP
             if (file.endsWith('.php')) {
                 server.ws.send({type: 'full-reload', path: '*'});
             }

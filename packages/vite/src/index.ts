@@ -4,12 +4,14 @@ import Globals from './helpers/globals';
 import * as Vite from 'vite';
 import * as Rollup from 'rollup';
 import externalGlobals from 'rollup-plugin-external-globals';
+import externalizeDevServer from "vite-plugin-externalize-dependencies";
 import {ParsedFilePath, parseFilePath} from './helpers/strings';
 import {wpViteEmptyDir} from './plugins/wp-vite-empty-dir';
 import {wpViteBundler, WpViteBundlerOptions} from './plugins/wp-vite-bundler';
 import {deepMerge} from './helpers/object';
 import {flattenToStringArray} from "./helpers/arrays";
 import {InputPluginOption} from "rollup";
+import {PluginOption} from "vite";
 
 export interface WpViteOptions extends WpViteBundlerOptions {
     dir?: string;
@@ -148,15 +150,32 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
              * Rollup plugins.
              */
             const rollupPlugins: InputPluginOption = [
-                // Ensures globals are NOT using "import" in the compiled files but are defined externally.
+                /**
+                 * Ensures globals are NOT using "import" in the compiled files but are defined externally.
+                 */
                 externalGlobals(globals, {exclude: options.input ? flattenToStringArray(options.input.interactivity) : []}/*Make sure we ignore modules*/),
 
-                // Ensures we can empty out the dir with rules in case the build folder is used for something else as well.
+                /**
+                 * Ensures we can empty out the dir with rules in case the build folder is used for something else as well.
+                 */
                 wpViteEmptyDir(options),
 
-                // Takes care of the whole bundle process for WP development.
+                /**
+                 * Takes care of the whole bundle process for WP development.
+                 */
                 wpViteBundler(options, mode),
             ]
+
+            /**
+             * Vite Plugin Options.
+             */
+            const vitePlugins: PluginOption = [
+
+                /**
+                 * Plugin for Vite that allows you to exclude specific dependencies in the dev server.
+                 */
+                externalizeDevServer({externals: Object.keys(globals)}),
+            ];
 
             if (!config.esbuild) {
                 config.esbuild = {}
@@ -196,6 +215,12 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
                 config.build.rollupOptions.plugins = [...rollupPlugins, ...config.build.rollupOptions.plugins] as InputPluginOption;
             } else {
                 config.build.rollupOptions.plugins = rollupPlugins;
+            }
+
+            if (config.plugins && Array.isArray(config.plugins)) {
+                config.plugins = [...vitePlugins, ...config.plugins];
+            } else {
+                config.plugins = vitePlugins;
             }
         })()),
     };
