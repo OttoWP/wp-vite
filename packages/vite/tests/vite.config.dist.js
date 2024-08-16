@@ -1,5 +1,5 @@
 import {defineConfig} from 'vite';
-import wpVite from '../dist';
+import wpVite from '../dist/index';
 import path from 'path';
 
 export default defineConfig({
