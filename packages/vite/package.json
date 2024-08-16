@@ -1,0 +1,52 @@
+{
+  "name": "@ottowp/wp-vite",
+  "workspaces": [
+    "packages/vite"
+  ],
+  "description": "Vite config for WordPress block & interactivity development.",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest",
+    "test-dist": "NODE_ENV=dist vitest",
+    "test-build": "vite build --config ./tests/vite.config.src.js",
+    "test-build-dev": "vite build --config ./tests/vite.config.src.js --mode development",
+    "test-build-dist": "vite build --config ./tests/vite.config.dist.js",
+    "test-build-dist-dev": "vite build --config ./tests/vite.config.dist.js --mode development",
+    "prepublishOnly": "yarn build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@wordpress/block-editor": "^14.0.0",
+    "@wordpress/blocks": "^13.5.0",
+    "@wordpress/components": "^28.5.0",
+    "@wordpress/interactivity": "^6.5.0",
+    "@wordpress/scripts": "^28.5.0",
+    "autoprefixer": "^10.4.7",
+    "fast-glob": "^3.3.2",
+    "postcss": "^8.4.41",
+    "postcss-combine-duplicated-selectors": "^10.0.3",
+    "postcss-import": "^16.1.0",
+    "rollup": "^4.20.0",
+    "rollup-plugin-external-globals": "^0.11.0",
+    "tailwindcss": "^3.4.9",
+    "terser": "^5.31.5",
+    "typescript": "^5.5.4",
+    "vite": "^5.4",
+    "vitest": "^2.0.5"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "vite",
+    "wordpress",
+    "bundler"
+  ],
+  "author": "OttoWP",
+  "license": "ISC",
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
