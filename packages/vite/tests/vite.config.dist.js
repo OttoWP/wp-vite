@@ -24,6 +24,15 @@ export default defineConfig({
           ['blocks', 'example-interactivity-block', 'view.js'],
         ],
       },
+      output: (output, source, ext) => {
+        const baseFolder = source.folders[source.folders.length - 1];
+
+        if (['images', 'fonts', 'svg'].includes(baseFolder)) {
+          return `${baseFolder}/[name].${ext}`;
+        }
+
+        return `${source.outPath}/[name].${ext}`;
+      },
       dependencies: (module) => module.name === 'index' ? ['react'] : [],
     })],
 });

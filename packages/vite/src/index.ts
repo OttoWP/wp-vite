@@ -4,7 +4,6 @@ import Globals from './helpers/globals';
 import * as Vite from 'vite';
 import * as Rollup from 'rollup';
 import externalGlobals from 'rollup-plugin-external-globals';
-import externalizeDevServer from "vite-plugin-externalize-dependencies";
 import {ParsedFilePath, parseFilePath} from './helpers/strings';
 import {wpViteEmptyDir} from './plugins/wp-vite-empty-dir';
 import {wpViteBundler, WpViteBundlerOptions} from './plugins/wp-vite-bundler';
@@ -169,13 +168,7 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
             /**
              * Vite Plugin Options.
              */
-            const vitePlugins: PluginOption = [
-
-                /**
-                 * Plugin for Vite that allows you to exclude specific dependencies in the dev server.
-                 */
-                externalizeDevServer({externals: Object.keys(globals)}),
-            ];
+            const vitePlugins: PluginOption = [];
 
             if (!config.esbuild) {
                 config.esbuild = {}

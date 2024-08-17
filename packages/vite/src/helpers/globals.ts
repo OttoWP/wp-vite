@@ -1,6 +1,7 @@
 import {camelToKebab} from './strings';
+import * as Rollup from "rollup";
 
-const otherModules = {
+const otherModules: Rollup.GlobalsOption = {
   'jquery':    'jQuery',
   'tinymce':   'tinymce',
   'moment':    'moment',
@@ -10,7 +11,7 @@ const otherModules = {
   'lodash':    'lodash',
 };
 
-const wpModules = [
+const wpModules: string[] = [
   'a11y',
   'annotations',
   'api-fetch',
@@ -68,9 +69,11 @@ const wpModules = [
   'wordcount',
 ];
 
-export default {
+const globals: Rollup.GlobalsOption = {
   ...otherModules,
   ...Object.fromEntries(
       wpModules.map(handle => [`@wordpress/${handle}`, `wp.${camelToKebab(handle)}`]),
   ),
-};
+}
+
+export default globals;
