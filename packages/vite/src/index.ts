@@ -11,13 +11,13 @@ import {deepMerge} from './helpers/object';
 import {flattenToStringArray} from "./helpers/arrays";
 import {InputPluginOption} from "rollup";
 import {PluginOption} from "vite";
+import {wpViteIgnoreStaticImport} from "./plugins/wp-vite-ignore-static-import";
 
 export interface WpViteOptions extends WpViteBundlerOptions {
     dir?: string;
     css?: string;
     keepOutDir?: string[];
 }
-
 
 export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
     const options: WpViteOptions = deepMerge(
@@ -149,6 +149,7 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
              * Rollup plugins.
              */
             const rollupPlugins: InputPluginOption = [
+
                 /**
                  * Ensures globals are NOT using "import" in the compiled files but are defined externally.
                  */
@@ -166,33 +167,28 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
             ]
 
             /**
-             * Vite Plugin Options.
+             * Vite Plugins.
              */
-            const vitePlugins: PluginOption = [];
+            const vitePlugins: PluginOption = [
 
-            if (!config.esbuild) {
-                config.esbuild = {}
-            }
+                /**
+                 * Ensures dev server ignores imports that are loaded externally.
+                 */
+                wpViteIgnoreStaticImport(Object.keys(globals))
+            ];
 
-            if (!config.build) {
-                config.build = {}
-            }
-
-            if (!config.build.rollupOptions) {
-                config.build.rollupOptions = {}
-            }
-
-            if (!config.build.rollupOptions.plugins) {
-                config.build.rollupOptions.plugins = []
-            }
-
+            config.esbuild = config.esbuild || {};
+            config.build = config.build || {};
+            config.build.rollupOptions = config.build.rollupOptions || {};
+            config.build.rollupOptions.plugins = config.build.rollupOptions.plugins || [];
             config.root = root;
-            config.css = deepMerge(cssOptions, config.css ?? {});
-            config.server = deepMerge(serverOptions, config.server ?? {})
+            config.css = {...cssOptions, ...(config.css ?? {})};
+            config.server = {...serverOptions, ...(config.server ?? {})}
+            config.optimizeDeps = {...optimizeDepsOptions, ...(config.optimizeDeps ?? {})}
+            config.plugins = [...vitePlugins, ...(config.plugins ?? [])];
             config.esbuild.loader = config.esbuild.loader ?? esBuildOptions.loader;
             config.esbuild.include = config.esbuild.include ?? esBuildOptions.include;
             config.esbuild.exclude = config.esbuild.exclude ?? esBuildOptions.exclude;
-            config.optimizeDeps = deepMerge(optimizeDepsOptions, config.optimizeDeps ?? {})
             config.build.manifest = config.build.manifest ?? buildOptions.manifest;
             config.build.target = config.build.target ?? buildOptions.target;
             config.build.minify = config.build.minify ?? buildOptions.minify;
@@ -208,12 +204,6 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
                 config.build.rollupOptions.plugins = [...rollupPlugins, ...config.build.rollupOptions.plugins] as InputPluginOption;
             } else {
                 config.build.rollupOptions.plugins = rollupPlugins;
-            }
-
-            if (config.plugins && Array.isArray(config.plugins)) {
-                config.plugins = [...vitePlugins, ...config.plugins];
-            } else {
-                config.plugins = vitePlugins;
             }
         })()),
     };

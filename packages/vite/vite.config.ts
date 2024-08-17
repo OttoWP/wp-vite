@@ -1,4 +1,4 @@
-import {defineConfig} from "vite";
+import {defineConfig, UserConfig} from "vite";
 import typescript from "@rollup/plugin-typescript";
 import {typescriptPaths} from "rollup-plugin-typescript-paths";
 import path from "path";
@@ -6,9 +6,15 @@ import path from "path";
 export default defineConfig({
     build: {
         manifest: false,
-        minify: true,
+        minify: false,
         reportCompressedSize: true,
         emptyOutDir: true,
+        esbuild: {
+            minify: false,
+            minifyWhitespace: false,
+            minifyIdentifiers: false,
+            minifySyntax: false,
+        },
         lib: {
             entry: path.resolve(__dirname, "src/index.ts"),
             fileName: "index",

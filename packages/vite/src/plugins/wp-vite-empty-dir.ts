@@ -34,6 +34,7 @@ export function wpViteEmptyDir(userOptions: WpViteEmptyDirOptions = {}): Vite.Pl
 
         buildStart() {
             const outDir = path.resolve(ViteConfig.root, ViteConfig.build.outDir);
+            const deleted = [];
 
             if (fs.existsSync(outDir)) {
                 const items   = fs.readdirSync(outDir, {withFileTypes: true});
@@ -47,11 +48,12 @@ export function wpViteEmptyDir(userOptions: WpViteEmptyDirOptions = {}): Vite.Pl
                         } else if (item.isFile()) {
                             fs.unlinkSync(itemPath);
                         }
-
-                        if (options.log) {
-                            console.log('Deleted ' + itemPath);
-                        }
+                        deleted.push(itemPath)
                     }
+                }
+
+                if (options.log) {
+                    console.log('Deleted ', deleted);
                 }
             }
         },
