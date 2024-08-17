@@ -177,15 +177,17 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
                 wpViteIgnoreStaticImport(Object.keys(globals))
             ];
 
-            config.esbuild = config.esbuild || {};
+            config.root = root;
+            config.css = {...cssOptions, ...(config.css ?? {})};
             config.build = config.build || {};
             config.build.rollupOptions = config.build.rollupOptions || {};
             config.build.rollupOptions.plugins = config.build.rollupOptions.plugins || [];
-            config.root = root;
-            config.css = {...cssOptions, ...(config.css ?? {})};
-            config.server = {...serverOptions, ...(config.server ?? {})}
+            config.server = config.server || {};
+            config.server.host = config.server.host ?? serverOptions.host;
+            config.server.port = config.server.port ?? serverOptions.port;
             config.optimizeDeps = {...optimizeDepsOptions, ...(config.optimizeDeps ?? {})}
             config.plugins = [...vitePlugins, ...(config.plugins ?? [])];
+            config.esbuild = config.esbuild || {};
             config.esbuild.loader = config.esbuild.loader ?? esBuildOptions.loader;
             config.esbuild.include = config.esbuild.include ?? esBuildOptions.include;
             config.esbuild.exclude = config.esbuild.exclude ?? esBuildOptions.exclude;

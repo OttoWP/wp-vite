@@ -6,15 +6,9 @@ import path from "path";
 export default defineConfig({
     build: {
         manifest: false,
-        minify: false,
+        minify: true,
         reportCompressedSize: true,
         emptyOutDir: true,
-        esbuild: {
-            minify: false,
-            minifyWhitespace: false,
-            minifyIdentifiers: false,
-            minifySyntax: false,
-        },
         lib: {
             entry: path.resolve(__dirname, "src/index.ts"),
             fileName: "index",

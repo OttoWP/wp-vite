@@ -1,7 +1,7 @@
 {
   "name": "@ottowp/wp-vite",
   "description": "Vite config for WordPress block & interactivity development.",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -17,6 +17,7 @@
     "clean": "rm -rf dist",
     "test": "vitest",
     "test-dist": "NODE_ENV=dist vitest",
+    "test-start": "vite --config ./tests/vite.config.src.js",
     "test-build": "vite build --config ./tests/vite.config.src.js",
     "test-build-dev": "vite build --config ./tests/vite.config.src.js --mode development",
     "test-build-dist": "vite build --config ./tests/vite.config.dist.js",
