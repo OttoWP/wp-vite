@@ -6,8 +6,8 @@ import {getGlobalsFromConfig} from "./helpers/globals";
 import {buildConfig} from "./helpers/config";
 import {flattenToStringArray} from "./helpers/arrays";
 import {ParsedFilePath, parseFilePath} from './helpers/strings';
-import {Plugin, ResolvedConfig, UserConfig} from "vite";
-import {GlobalsOption, NormalizedInputOptions, SourceMap} from "rollup";
+import {PluginOption, ResolvedConfig, UserConfig} from "vite";
+import {GlobalsOption, SourceMap} from "rollup";
 import {WPViteBundler, WPViteBundlerOptions} from "./plugins/wp-vite-bundler";
 import externalGlobals from "rollup-plugin-external-globals";
 
@@ -24,19 +24,9 @@ export interface WPViteOptions extends WPViteBundlerOptions {
     css: string;
 
     /**
-     * Asset types and their corresponding regex patterns.
-     */
-    assets: Record<string, RegExp>;
-
-    /**
      * Enable log. Default is false.
      */
     log?: boolean;
-
-    /**
-     * Choose which folders to keep. Default is empty.
-     */
-    keepOutDir?: string[];
 
     /**
      * The path to the manifest in the output directory.
@@ -49,7 +39,7 @@ export interface WPViteOptions extends WPViteBundlerOptions {
     phpManifest?: boolean;
 }
 
-function WPVite(userOptions: Partial<WPViteOptions> = {}): Partial<Plugin> {
+function WPVite(userOptions: Partial<WPViteOptions> = {}): Partial<PluginOption> {
     let viteConfig: ResolvedConfig;
     let viteGlobals: GlobalsOption;
 
@@ -77,82 +67,16 @@ function WPVite(userOptions: Partial<WPViteOptions> = {}): Partial<Plugin> {
             manifest: '.vite/manifest.json',
             phpManifest: false,
             log: false,
-            keepOutDir: [],
         },
         userOptions
     )
 
     /**
-     * Empties out dir with rules.
-     *
-     * @param config
-     * @param options
-     */
-    const emptyOutDir = (config: ResolvedConfig, options: WPViteOptions) => {
-        const outDir = path.resolve(config.root, config.build.outDir);
-        const deleted = [];
-
-        if (!fs.existsSync(outDir)) return;
-
-        for (const item of fs.readdirSync(outDir, {withFileTypes: true})) {
-            const itemPath = path.join(outDir, item.name);
-
-            if (Array.isArray(options.keepOutDir) && !options.keepOutDir.includes(item.name)) {
-                if (item.isDirectory()) {
-                    fs.rmSync(itemPath, {recursive: true, force: true});
-                } else if (item.isFile()) {
-                    fs.unlinkSync(itemPath);
-                }
-                deleted.push(itemPath)
-            }
-        }
-    }
-
-    /**
-     * Gathers assets (images, svg, fonts) per provided regex rules
-     *
-     * @param config
-     */
-    const collectAssets = (config: ResolvedConfig) => {
-        const assets: Record<string, string[]> = {};
-
-        // Group by asset type.
-        for (const key in options.assets) {
-            if (!assets[key]) {
-                assets[key] = fg.sync([path.resolve(config.root, '**', key, '**')]);
-            }
-        }
-
-        return assets
-    };
-
-    /**
-     * Gather resources from entries (PHP, JSON etc.)
-     */
-    const collectResources = (): Record<string, string[]> | null => {
-        const resources = flattenToStringArray(options.input.entries);
-        const filtered = resources.filter(file => !file.endsWith('.js') && !file.endsWith(`.${options.css}`));
-        const grouped: Record<string, string[]> = {};
-
-        // Group by extension.
-        filtered.forEach(entry => {
-            const ext = path.extname(entry).toLowerCase();
-            if (!grouped[ext]) grouped[ext] = [];
-            grouped[ext].push(entry);
-        });
-
-        return grouped;
-    };
-
-    /**
      * Plugin hooks.
      */
     return {
-
-        /**
-         * Plugin name.
-         */
         name: 'wp-vite',
+        enforce: "pre",
 
         /**
          * Config hook.
@@ -216,34 +140,6 @@ function WPVite(userOptions: Partial<WPViteOptions> = {}): Partial<Plugin> {
             }
             // Set the resolved config.
             viteConfig = resolvedConfig;
-        },
-
-        /**
-         * Build Start Hook.
-         */
-        buildStart(buildOptions: NormalizedInputOptions) {
-            emptyOutDir(viteConfig, options)
-
-            const filePaths = {...(collectResources() ?? {}), ...(collectAssets(viteConfig) ?? {})};
-            // Types.
-            for (const type in filePaths) {
-                if (!filePaths[type]) return;
-                // File paths.
-                filePaths[type].forEach(filePath => {
-                    // Parse file path and create emit object.
-                    const file = options.source(path.basename(viteConfig.root), filePath);
-                    // Emit our assets & resources.
-                    this.emitFile({
-                        type: 'asset',
-                        fileName: options.output(`${type}/[name][ext]`, file, file.ext)
-                            .replace(/\[name\]/g, file.fileName)
-                            .replace(/\[ext\]/g, `.${file.ext}`),
-                        originalFileName: `${file.fileName}.${file.ext}`,
-                        source: fs.readFileSync(file.path),
-                        name: path.relative(path.resolve(viteConfig.root), file.path)
-                    });
-                });
-            }
         },
 
         /**

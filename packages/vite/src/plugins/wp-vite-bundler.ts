@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import fg from "fast-glob";
 import {getGlobalsFromConfig} from "../helpers/globals";
 import {createHash} from 'crypto';
 import {minify, MinifyOptions} from 'terser';
@@ -7,7 +8,7 @@ import {parseFilePath} from '../helpers/strings';
 import {varExport} from '../helpers/object';
 import {flattenToStringArray} from "../helpers/arrays";
 import {ResolvedConfig, Plugin} from "vite";
-import {GlobalsOption, NormalizedOutputOptions, OutputBundle, OutputChunk} from "rollup";
+import {GlobalsOption, NormalizedInputOptions, NormalizedOutputOptions, OutputBundle, OutputChunk} from "rollup";
 
 export interface WPViteBundlerOptions {
 
@@ -15,6 +16,11 @@ export interface WPViteBundlerOptions {
      * The CSS extension type. Default: 'pcss'.
      */
     css: string;
+
+    /**
+     * Asset types and their corresponding regex patterns.
+     */
+    assets: Record<string, RegExp>;
 
     /**
      * WordPress enqueue dependency rules.
@@ -83,6 +89,11 @@ export interface WPViteBundlerOptions {
     };
 
     /**
+     * Choose which folders to keep. Default is empty.
+     */
+    keepOutDir?: string[];
+
+    /**
      * Enable logging. Default: false.
      */
     log?: boolean;
@@ -94,6 +105,7 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
     const options: WPViteBundlerOptions = {
         ...{
             css: 'pcss',
+            assets: {},
             dependencies: [],
             wpDeps: true,
             log: false,
@@ -107,6 +119,7 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
                 banner: `document.addEventListener('DOMContentLoaded', () => {`,
                 footer: `});`,
             },
+            keepOutDir: [],
         },
         ...userOptions,
     };
@@ -120,6 +133,67 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
      * Collect styles.
      */
     const styles: { [cssOrigin: string]: string } = {};
+
+    /**
+     * Empties out dir with rules.
+     *
+     * @param config
+     */
+    const emptyOutDir = (config: ResolvedConfig) => {
+        const outDir = path.resolve(config.root, config.build.outDir);
+        const deleted = [];
+
+        if (!fs.existsSync(outDir)) return;
+
+        for (const item of fs.readdirSync(outDir, {withFileTypes: true})) {
+            const itemPath = path.join(outDir, item.name);
+
+            if (Array.isArray(options.keepOutDir) && !options.keepOutDir.includes(item.name)) {
+                if (item.isDirectory()) {
+                    fs.rmSync(itemPath, {recursive: true, force: true});
+                } else if (item.isFile()) {
+                    fs.unlinkSync(itemPath);
+                }
+                deleted.push(itemPath)
+            }
+        }
+    }
+
+    /**
+     * Gathers assets (images, svg, fonts) per provided regex rules
+     *
+     * @param config
+     */
+    const collectAssets = (config: ResolvedConfig) => {
+        const assets: Record<string, string[]> = {};
+
+        // Group by asset type.
+        for (const key in options.assets) {
+            if (!assets[key]) {
+                assets[key] = fg.sync([path.resolve(config.root, '**', key, '**')]);
+            }
+        }
+
+        return assets
+    };
+
+    /**
+     * Gather resources from entries (PHP, JSON etc.)
+     */
+    const collectResources = (): Record<string, string[]> | null => {
+        const resources = flattenToStringArray(options.input.entries);
+        const filtered = resources.filter(file => !file.endsWith('.js') && !file.endsWith(`.${options.css}`));
+        const grouped: Record<string, string[]> = {};
+
+        // Group by extension.
+        filtered.forEach(entry => {
+            const ext = path.extname(entry).toLowerCase();
+            if (!grouped[ext]) grouped[ext] = [];
+            grouped[ext].push(entry);
+        });
+
+        return grouped;
+    };
 
     /**
      * Creates the dependency list & cache buster.
@@ -279,6 +353,34 @@ ${options.externalWrapper.footer}
          */
         configResolved(resolvedConfig) {
             viteConfig = resolvedConfig;
+        },
+
+        /**
+         * Build Start Hook.
+         */
+        buildStart(buildOptions: NormalizedInputOptions) {
+            emptyOutDir(viteConfig)
+
+            const filePaths = {...(collectResources() ?? {}), ...(collectAssets(viteConfig) ?? {})};
+            // Types.
+            for (const type in filePaths) {
+                if (!filePaths[type]) return;
+                // File paths.
+                filePaths[type].forEach(filePath => {
+                    // Parse file path and create emit object.
+                    const file = options.source(path.basename(viteConfig.root), filePath);
+                    // Emit our assets & resources.
+                    this.emitFile({
+                        type: 'asset',
+                        fileName: options.output(`${type}/[name][ext]`, file, file.ext)
+                            .replace(/\[name\]/g, file.fileName)
+                            .replace(/\[ext\]/g, `.${file.ext}`),
+                        originalFileName: `${file.fileName}.${file.ext}`,
+                        source: fs.readFileSync(file.path),
+                        name: path.relative(path.resolve(viteConfig.root), file.path)
+                    });
+                });
+            }
         },
 
         /**
