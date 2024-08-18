@@ -1,7 +1,8 @@
 import {camelToKebab} from './strings';
-import * as Rollup from "rollup";
+import {ResolvedConfig, UserConfig} from "vite";
+import {GlobalsOption} from "rollup";
 
-const otherModules: Rollup.GlobalsOption = {
+const otherModules: GlobalsOption = {
   'jquery':    'jQuery',
   'tinymce':   'tinymce',
   'moment':    'moment',
@@ -69,7 +70,7 @@ const wpModules: string[] = [
   'wordcount',
 ];
 
-const globals: Rollup.GlobalsOption = {
+const globals: GlobalsOption = {
   ...otherModules,
   ...Object.fromEntries(
       wpModules.map(handle => [`@wordpress/${handle}`, `wp.${camelToKebab(handle)}`]),
@@ -77,3 +78,9 @@ const globals: Rollup.GlobalsOption = {
 }
 
 export default globals;
+
+export const getGlobalsFromConfig = (config: UserConfig | ResolvedConfig): GlobalsOption => {
+  return !Array.isArray(config.build?.rollupOptions?.output)
+      ? config.build?.rollupOptions?.output?.globals ?? globals
+      : globals;
+}

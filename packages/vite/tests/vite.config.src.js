@@ -1,5 +1,5 @@
 import {defineConfig} from 'vite';
-import wpVite from '../src';
+import WPVite from '../src';
 import path from 'path';
 
 export default defineConfig({
@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   plugins: [
-    wpVite( {
+    WPVite( {
       input:  {
         entries:       [
           ['*', '*.js'],

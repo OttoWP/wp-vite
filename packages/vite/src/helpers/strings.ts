@@ -1,10 +1,30 @@
 import pathModule from 'path';
 
 export interface ParsedFilePath {
+
+  /**
+   * Full path to source file.
+   */
   path: string;
+
+  /**
+   * Path to build file in outDir.
+   */
   outPath: string;
+
+  /**
+   * All folders starting from root in array.
+   */
   folders: string[];
+
+  /**
+   * File name without extension.
+   */
   fileName: string;
+
+  /**
+   * File extension.
+   */
   ext: string;
 }
 

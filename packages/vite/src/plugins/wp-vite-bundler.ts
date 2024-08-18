@@ -1,124 +1,101 @@
 import path from 'path';
 import fs from 'fs';
-import fg from 'fast-glob';
-import * as Vite from 'vite';
-import * as Rollup from "rollup";
-import Globals from "../helpers/globals";
+import {getGlobalsFromConfig} from "../helpers/globals";
 import {createHash} from 'crypto';
 import {minify, MinifyOptions} from 'terser';
 import {parseFilePath} from '../helpers/strings';
 import {varExport} from '../helpers/object';
 import {flattenToStringArray} from "../helpers/arrays";
+import {ResolvedConfig, Plugin} from "vite";
+import {GlobalsOption, NormalizedOutputOptions, OutputBundle, OutputChunk} from "rollup";
 
-export interface WpViteBundlerOptions {
+export interface WPViteBundlerOptions {
 
     /**
-     * CSS extension type. Default: pcss.
+     * The CSS extension type. Default: 'pcss'.
      */
-    css?: string;
+    css: string;
 
     /**
-     * Types of assets and regex rule.
-     */
-    assets?: Record<string, RegExp>;
-
-    /**
-     * WP enqueue dependency rules.
+     * WordPress enqueue dependency rules.
      */
     dependencies?: string[] | ((module: any) => string[]);
 
     /**
-     * Whether to include WP globals from file as dependencies. Default: true;
+     * Whether to include WordPress globals from files as dependencies. Default: true.
      */
     wpDeps?: boolean;
 
     /**
-     * The manifest path in outDir.
+     * Entry points to bundle.
      */
-    manifest?: string;
-
-    /**
-     * Whether to include a PHP version of the manifest instead of a JSON file.
-     */
-    phpManifest?: boolean;
-
-    /**
-     * Enable logs.
-     */
-    log?: boolean;
-
-    /**
-     * Entries to bundle.
-     */
-    input?: {
+    input: {
         /**
-         * ES entries.
+         * Entry points.
          */
         entries: string[] | string[][];
 
         /**
-         * EsModules entries.
+         * EsModules entry points.
          */
         interactivity: string[] | string[][];
     };
 
     /**
-     * Parsed file path object of the source.
+     * A function to parse the file path of the source.
      */
-    source?: (root: string, path: string) => ReturnType<typeof parseFilePath>;
+    source: (root: string, path: string) => ReturnType<typeof parseFilePath>;
 
     /**
-     * The output of the file in outDir.
+     * A function to determine the output path of a file in the output directory.
      */
-    output?: (output: string, source: ReturnType<typeof parseFilePath>, ext: string) => string;
+    output: (output: string, source: ReturnType<typeof parseFilePath>, ext: string) => string;
 
     /**
-     * File banner.
+     * Content to be added at the top of each file.
      */
     banner?: string;
 
     /**
-     * File footer.
+     * Content to be added at the bottom of each file.
      */
     footer?: string;
 
     /**
-     * Wrapper code if file contains globals for non EsModules.
+     * Configuration for wrapping files that contain global variables.
      */
     externalWrapper?: {
 
         /**
-         * Enable wrapper.
+         * Whether to enable the wrapper.
          */
         enable: boolean;
 
         /**
-         * Wrapper banner.
+         * Content to be added at the top of the wrapper.
          */
         banner: string;
 
         /**
-         * Wrapper footer.
+         * Content to be added at the bottom of the wrapper.
          */
         footer: string;
     };
+
+    /**
+     * Enable logging. Default: false.
+     */
+    log?: boolean;
 }
 
-export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): Vite.PluginOption {
-    let ViteConfig: Vite.ResolvedConfig;
+export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: string): Partial<Plugin> {
+    let viteConfig: ResolvedConfig;
 
-    const options: WpViteBundlerOptions = {
+    const options: WPViteBundlerOptions = {
         ...{
             css: 'pcss',
-            assets: {
-                images: /png|jpe?g|gif|tiff|bmp|ico/i,
-                svg: /\.svg$/i,
-                fonts: /ttf|woff|woff2/i,
-            },
             dependencies: [],
             wpDeps: true,
-            manifest: '.vite/manifest.json',
-            phpManifest: false,
             log: false,
             input: {entries: [], interactivity: []},
             source: (root, path) => parseFilePath(root, path),
@@ -145,82 +122,13 @@ export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): 
     const styles: { [cssOrigin: string]: string } = {};
 
     /**
-     * Gathers assets (images, svg, fonts) per provided regex rules
-     */
-    const collectAssets = () => {
-        if (!options.assets) return null;
-
-        const assets: Record<string, string[]> = {};
-
-        for (const key in options.assets) {
-            if (!assets[key]) {
-                assets[key] = fg.sync([path.resolve(ViteConfig.root, '**', key, '**')]);
-            }
-        }
-
-        if (options.log) {
-            console.log('Assets', assets)
-        }
-
-        return assets
-    };
-
-    /**
-     * Gather resources from entries (PHP, JSON etc.)
-     */
-    const collectResources = (): Record<string, string[]> | null => {
-        if (!options.input) return null;
-
-        const resources = flattenToStringArray(options.input.entries);
-        const filtered = resources.filter(file => !file.endsWith('.js') && !file.endsWith(`.${options.css}`));
-        const grouped: Record<string, string[]> = {};
-
-        filtered.forEach(entry => {
-            const ext = path.extname(entry).toLowerCase();
-            if (!grouped[ext]) {
-                grouped[ext] = [];
-            }
-            grouped[ext].push(entry);
-        });
-
-        if (options.log) {
-            console.log('Resources', grouped)
-        }
-
-        return grouped;
-    };
-
-    /**
-     * Construct emit params.
-     *
-     * @param output
-     * @param filePath
-     */
-    const emitParams = (output: string, filePath: string): Rollup.EmittedAsset | null => {
-        if (!options.source || !options.output) return null;
-
-        const file = options.source(path.basename(ViteConfig.root), filePath);
-        const fileName = options.output(output, file, file.ext)
-            .replace(/\[name\]/g, file.fileName)
-            .replace(/\[ext\]/g, `.${file.ext}`);
-
-        return {
-            type: 'asset',
-            fileName,
-            originalFileName: `${file.fileName}.${file.ext}`,
-            source: fs.readFileSync(file.path),
-            name: path.relative(path.resolve(ViteConfig.root), file.path)
-        };
-    }
-
-    /**
      * Creates the dependency list & cache buster.
      *
      * @param module
      * @param bundleOptions
      * @param dependencies
      */
-    const createPhpAssetFile = (module: Rollup.OutputChunk, bundleOptions: Rollup.NormalizedOutputOptions, dependencies: string[]) => {
+    const createPhpAssetFile = (module: OutputChunk, bundleOptions: NormalizedOutputOptions, dependencies: string[]) => {
         if (!bundleOptions.dir || !module.facadeModuleId) return;
 
         const outPath = path.resolve(bundleOptions.dir, path.dirname(module.fileName));
@@ -243,7 +151,7 @@ export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): 
      * @param globals
      * @param externals
      */
-    const createDependencyArray = (module: Rollup.OutputChunk, isInteractivity: boolean, globals: Rollup.GlobalsOption, externals: string[]): string[] => {
+    const createDependencyArray = (module: OutputChunk, isInteractivity: boolean, globals: GlobalsOption, externals: string[]): string[] => {
         const dependencies = [
             ...(typeof options.dependencies === 'function'
                 ? options.dependencies(module)
@@ -271,7 +179,7 @@ export function wpViteBundler(userOptions: WpViteBundlerOptions, mode: string): 
      * @param module
      * @param externals
      */
-    const createCodeWrappers = async (module: Rollup.OutputChunk, externals: string[]) => {
+    const createCodeWrappers = async (module: OutputChunk, externals: string[]) => {
         if (options.externalWrapper?.enable) {
             const detected = externals.filter(external => module.code.includes(external) && !module.code.includes('DOMContentLoaded'));
 
@@ -291,7 +199,7 @@ ${options.externalWrapper.footer}
                 if (mode === 'development') {
                     module.code = wrappedCode;
                 } else {
-                    const minifiedWrappedCode = await minify(wrappedCode, ViteConfig.build.terserOptions as MinifyOptions);
+                    const minifiedWrappedCode = await minify(wrappedCode, viteConfig.build.terserOptions as MinifyOptions);
 
                     if (minifiedWrappedCode.code) {
                         module.code = minifiedWrappedCode.code;
@@ -311,7 +219,7 @@ ${options.externalWrapper.footer}
      *
      * @param module
      */
-    const setImportedCss = (module: Rollup.OutputChunk) => {
+    const setImportedCss = (module: OutputChunk) => {
         if (module.viteMetadata && options.css) {
             const cssExt = options.css;
 
@@ -338,7 +246,7 @@ ${options.externalWrapper.footer}
      *
      * @param bundle
      */
-    const setCSsOutPath = (bundle: Rollup.OutputBundle) => {
+    const setCSsOutPath = (bundle: OutputBundle) => {
         Object.values(bundle).forEach(module => {
             if (module.type === 'asset') {
 
@@ -354,43 +262,12 @@ ${options.externalWrapper.footer}
      *
      * @param module
      */
-    const removeEmptyCssComment = (module: Rollup.OutputChunk) => {
+    const removeEmptyCssComment = (module: OutputChunk) => {
         module.code = module.code.replace(/\/\*\s*empty css\s*\*\//g, '');
     }
 
     /**
-     * Create the PHP manifest file if enabled.
-     *
-     * @param manifestPath
-     */
-    const createPhpManifestFile = (manifestPath: string) => {
-        const phpManifestPath = path.resolve(path.dirname(manifestPath), 'manifest.php');
-
-        if (!fs.existsSync(manifestPath)) return;
-
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-
-        fs.writeFileSync(phpManifestPath, `<?php\n\nreturn ${varExport(manifest)};\n`, 'utf-8');
-
-        if (options.log) {
-            console.log(`PHP manifest generated at: ${phpManifestPath}`);
-        }
-    }
-
-    /**
-     * Handle hot update for PHP files.
-     *
-     * @param file
-     * @param server
-     */
-    const handleHotUpdateForPhp = (file: string, server: Vite.ViteDevServer) => {
-        if (file.endsWith('.php')) {
-            server.ws.send({type: 'full-reload', path: '*'});
-        }
-    }
-
-    /**
-     * Plugin.
+     * Plugin hooks.
      */
     return {
         name: 'vite-wp-bundler',
@@ -401,25 +278,7 @@ ${options.externalWrapper.footer}
          * @param resolvedConfig
          */
         configResolved(resolvedConfig) {
-            ViteConfig = resolvedConfig;
-        },
-
-        /**
-         * Build Start Hook.
-         */
-        async buildStart() {
-            const sources = {...(collectResources() ?? {}), ...(collectAssets() ?? {})};
-
-            for (const type in sources) {
-                if (sources[type]) {
-                    sources[type].forEach(filePath => {
-                        const params = emitParams(`${type}/[name][ext]`, filePath);
-                        if (params) {
-                            this.emitFile(params);
-                        }
-                    });
-                }
-            }
+            viteConfig = resolvedConfig;
         },
 
         /**
@@ -428,12 +287,8 @@ ${options.externalWrapper.footer}
          * @param bundleOptions
          * @param bundle
          */
-        async generateBundle(bundleOptions: Rollup.NormalizedOutputOptions, bundle: Rollup.OutputBundle) {
-            if (!options.input) return;
-
-            const globals: Rollup.GlobalsOption = !Array.isArray(ViteConfig.build?.rollupOptions?.output)
-                ? ViteConfig.build?.rollupOptions?.output?.globals ?? Globals
-                : Globals;
+        async generateBundle(bundleOptions: NormalizedOutputOptions, bundle: OutputBundle) {
+            const globals: GlobalsOption = getGlobalsFromConfig(viteConfig)
 
             for (const module of Object.values(bundle)) {
                 if (module.type === 'chunk' && module.facadeModuleId) {
@@ -459,25 +314,6 @@ ${options.externalWrapper.footer}
                 }
             }
             setCSsOutPath(bundle)
-        },
-
-        /**
-         * Close Bundle hook.
-         */
-        closeBundle() {
-            if (options.phpManifest && options.manifest) {
-                createPhpManifestFile(path.resolve(ViteConfig.root, ViteConfig.build.outDir, options.manifest))
-            }
-        },
-
-        /**
-         * Handle Hot Update hook.
-         *
-         * @param file
-         * @param server
-         */
-        handleHotUpdate({file, server}) {
-            handleHotUpdateForPhp(file, server);
         },
     };
 }

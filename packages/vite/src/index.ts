@@ -1,29 +1,67 @@
-import path from 'path';
-import fg from 'fast-glob';
-import Globals from './helpers/globals';
-import * as Vite from 'vite';
-import * as Rollup from 'rollup';
-import externalGlobals from 'rollup-plugin-external-globals';
-import {ParsedFilePath, parseFilePath} from './helpers/strings';
-import {wpViteEmptyDir} from './plugins/wp-vite-empty-dir';
-import {wpViteBundler, WpViteBundlerOptions} from './plugins/wp-vite-bundler';
-import {deepMerge} from './helpers/object';
+import fs from "fs";
+import fg from "fast-glob";
+import path from "path";
+import {deepMerge, varExport} from './helpers/object';
+import {getGlobalsFromConfig} from "./helpers/globals";
+import {buildConfig} from "./helpers/config";
 import {flattenToStringArray} from "./helpers/arrays";
-import {InputPluginOption} from "rollup";
-import {PluginOption} from "vite";
-import {wpViteIgnoreStaticImport} from "./plugins/wp-vite-ignore-static-import";
+import {ParsedFilePath, parseFilePath} from './helpers/strings';
+import {Plugin, ResolvedConfig, UserConfig} from "vite";
+import {GlobalsOption, NormalizedInputOptions, SourceMap} from "rollup";
+import {WPViteBundler, WPViteBundlerOptions} from "./plugins/wp-vite-bundler";
+import externalGlobals from "rollup-plugin-external-globals";
 
-export interface WpViteOptions extends WpViteBundlerOptions {
-    dir?: string;
-    css?: string;
+export interface WPViteOptions extends WPViteBundlerOptions {
+
+    /**
+     * Set the plugins root dir.
+     */
+    dir: string;
+
+    /**
+     * Set CSS extension. Default is pcss.
+     */
+    css: string;
+
+    /**
+     * Asset types and their corresponding regex patterns.
+     */
+    assets: Record<string, RegExp>;
+
+    /**
+     * Enable log. Default is false.
+     */
+    log?: boolean;
+
+    /**
+     * Choose which folders to keep. Default is empty.
+     */
     keepOutDir?: string[];
+
+    /**
+     * The path to the manifest in the output directory.
+     */
+    manifest?: string;
+
+    /**
+     * Whether to include a PHP version of the manifest in addition to the JSON file.
+     */
+    phpManifest?: boolean;
 }
 
-export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
-    const options: WpViteOptions = deepMerge(
+function WPVite(userOptions: Partial<WPViteOptions> = {}): Partial<Plugin> {
+    let viteConfig: ResolvedConfig;
+    let viteGlobals: GlobalsOption;
+
+    const options: WPViteOptions = deepMerge(
         {
             dir: process.cwd(),
             css: 'pcss',
+            assets: {
+                images: /png|jpe?g|gif|tiff|bmp|ico/i,
+                svg: /\.svg$/i,
+                fonts: /ttf|woff|woff2/i,
+            },
             input: {
                 entries: [
                     ['*', '*.js'],
@@ -36,177 +74,242 @@ export default function wpVite(userOptions: WpViteOptions = {}): Vite.Plugin {
             },
             source: (root: string, path: string) => parseFilePath(root, path),
             output: (output: string, source: ParsedFilePath, ext: string) => `${source.outPath}/[name].${ext}`,
+            manifest: '.vite/manifest.json',
+            phpManifest: false,
+            log: false,
+            keepOutDir: [],
         },
         userOptions
     )
 
+    /**
+     * Empties out dir with rules.
+     *
+     * @param config
+     * @param options
+     */
+    const emptyOutDir = (config: ResolvedConfig, options: WPViteOptions) => {
+        const outDir = path.resolve(config.root, config.build.outDir);
+        const deleted = [];
+
+        if (!fs.existsSync(outDir)) return;
+
+        for (const item of fs.readdirSync(outDir, {withFileTypes: true})) {
+            const itemPath = path.join(outDir, item.name);
+
+            if (Array.isArray(options.keepOutDir) && !options.keepOutDir.includes(item.name)) {
+                if (item.isDirectory()) {
+                    fs.rmSync(itemPath, {recursive: true, force: true});
+                } else if (item.isFile()) {
+                    fs.unlinkSync(itemPath);
+                }
+                deleted.push(itemPath)
+            }
+        }
+    }
+
+    /**
+     * Gathers assets (images, svg, fonts) per provided regex rules
+     *
+     * @param config
+     */
+    const collectAssets = (config: ResolvedConfig) => {
+        const assets: Record<string, string[]> = {};
+
+        // Group by asset type.
+        for (const key in options.assets) {
+            if (!assets[key]) {
+                assets[key] = fg.sync([path.resolve(config.root, '**', key, '**')]);
+            }
+        }
+
+        return assets
+    };
+
+    /**
+     * Gather resources from entries (PHP, JSON etc.)
+     */
+    const collectResources = (): Record<string, string[]> | null => {
+        const resources = flattenToStringArray(options.input.entries);
+        const filtered = resources.filter(file => !file.endsWith('.js') && !file.endsWith(`.${options.css}`));
+        const grouped: Record<string, string[]> = {};
+
+        // Group by extension.
+        filtered.forEach(entry => {
+            const ext = path.extname(entry).toLowerCase();
+            if (!grouped[ext]) grouped[ext] = [];
+            grouped[ext].push(entry);
+        });
+
+        return grouped;
+    };
+
+    /**
+     * Plugin hooks.
+     */
     return {
+
+        /**
+         * Plugin name.
+         */
         name: 'wp-vite',
 
-        config: (config: Vite.UserConfig, {command, mode}) => ((() => {
-
-            /**
-             * root.
-             */
-            const root = config.root ?? 'src';
-
+        /**
+         * Config hook.
+         */
+        config: (config: UserConfig, {command, mode}) => ((() => {
+            const root = config.root ?? (config.root = 'src');
+            // Set globals from config.
+            viteGlobals = getGlobalsFromConfig(config);
             // Resolve entry paths.
             (['entries', 'interactivity'] as const).forEach((entriesKey) => {
-                if (options.input) {
-                    options.input[entriesKey] = fg.sync(
-                        options.input[entriesKey].map((pathPattern) => {
-                            return options.dir ? path.resolve(options.dir, root, ...pathPattern) : ''
-                        })
-                    );
-                }
+                options.input[entriesKey] = fg.sync(
+                    options.input[entriesKey].map((pathPattern) => path.resolve(options.dir, root, ...pathPattern))
+                );
             });
+            // Pre-configures the config for WP development.
+            config = buildConfig(config, options, viteGlobals, command, mode);
 
-            /**
-             * Globals.
-             */
-            const globals = !Array.isArray(config.build?.rollupOptions?.output)
-                ? config.build?.rollupOptions?.output?.globals ?? Globals
-                : Globals;
+            // Add rollup plugins.
+            if (Array.isArray(config.build?.rollupOptions?.plugins)) {
+                const rollupPlugins = config.build?.rollupOptions?.plugins;
 
-            /**
-             * CSS Options.
-             */
-            const cssOptions: Vite.CSSOptions = {
-                postcss: options.dir ? path.resolve(options.dir, './postcss.config.js') : '',
-                devSourcemap: true
-            }
-
-            /**
-             * Server options.
-             */
-            const serverOptions: Vite.ServerOptions = {
-                host: '0.0.0.0',
-                port: 3000,
-            }
-
-            /**
-             * ESBuild Options.
-             */
-            const esBuildOptions: Vite.ESBuildOptions = {
-                loader: 'jsx',
-                include: new RegExp(`/${root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/.*\\.js$`),
-                exclude: [],
-            }
-
-            /**
-             * Optimize Deps Options.
-             */
-            const optimizeDepsOptions: Vite.DepOptimizationOptions = {
-                esbuildOptions: {loader: {'.js': 'jsx'}}, // Need JSX syntax for dev server
-            }
-
-            /**
-             * Build Options.
-             */
-            const buildOptions: Vite.BuildOptions = {
-                outDir: '../build',
-                emptyOutDir: !(options.keepOutDir != null && options.keepOutDir.length > 0),
-                manifest: true,
-                target: 'es2015',
-                minify: mode === 'development' ? false : 'terser',
-                terserOptions: {
-                    output: {
-                        comments: /translators:/i,
-                    },
-                    compress: {
-                        passes: 2,
-                    },
-                    mangle: {
-                        reserved: ['__', '_n', '_nx', '_x'],
-                    },
-                },
-                sourcemap: mode === 'development' || command === 'serve' ? 'inline' : false,
-            }
-
-            /**
-             * Rollup Options.
-             */
-            const rollupOptions: Rollup.RollupOptions = {
-                input: (() => options.input ? [
-                    ...flattenToStringArray(options.input.entries),
-                    ...flattenToStringArray(options.input.interactivity)
-                ].filter(file => file.endsWith('.js')) : [])(),
-                output: {
-                    entryFileNames: (assetInfo) => {
-                        if (assetInfo.facadeModuleId && options.output && options.source) {
-                            return options.output(`js/[name].[hash].js`, options.source(root, assetInfo.facadeModuleId), 'js');
-                        } else {
-                            return `js/[name].[hash].js`
-                        }
-                    },
-                    format: 'es',
-                    globals: globals,
-                },
-                external: ['@wordpress/block-editor', '@wordpress/blocks', '@wordpress/i18n', '@wordpress/interactivity', 'react'],
-            }
-
-            /**
-             * Rollup plugins.
-             */
-            const rollupPlugins: InputPluginOption = [
-
-                /**
-                 * Ensures globals are NOT using "import" in the compiled files but are defined externally.
-                 */
-                externalGlobals(globals, {exclude: options.input ? flattenToStringArray(options.input.interactivity) : []}/*Make sure we ignore modules*/),
-
-                /**
-                 * Ensures we can empty out the dir with rules in case the build folder is used for something else as well.
-                 */
-                wpViteEmptyDir(options),
-
-                /**
-                 * Takes care of the whole bundle process for WP development.
-                 */
-                wpViteBundler(options, mode),
-            ]
-
-            /**
-             * Vite Plugins.
-             */
-            const vitePlugins: PluginOption = [
-
-                /**
-                 * Ensures dev server ignores imports that are loaded externally.
-                 */
-                wpViteIgnoreStaticImport(Object.keys(globals))
-            ];
-
-            config.root = root;
-            config.css = {...cssOptions, ...(config.css ?? {})};
-            config.build = config.build || {};
-            config.build.rollupOptions = config.build.rollupOptions || {};
-            config.build.rollupOptions.plugins = config.build.rollupOptions.plugins || [];
-            config.server = config.server || {};
-            config.server.host = config.server.host ?? serverOptions.host;
-            config.server.port = config.server.port ?? serverOptions.port;
-            config.optimizeDeps = {...optimizeDepsOptions, ...(config.optimizeDeps ?? {})}
-            config.plugins = [...vitePlugins, ...(config.plugins ?? [])];
-            config.esbuild = config.esbuild || {};
-            config.esbuild.loader = config.esbuild.loader ?? esBuildOptions.loader;
-            config.esbuild.include = config.esbuild.include ?? esBuildOptions.include;
-            config.esbuild.exclude = config.esbuild.exclude ?? esBuildOptions.exclude;
-            config.build.manifest = config.build.manifest ?? buildOptions.manifest;
-            config.build.target = config.build.target ?? buildOptions.target;
-            config.build.minify = config.build.minify ?? buildOptions.minify;
-            config.build.outDir = config.build.outDir ?? buildOptions.outDir;
-            config.build.emptyOutDir = config.build.emptyOutDir ?? buildOptions.emptyOutDir;
-            config.build.sourcemap = config.build.sourcemap ?? buildOptions.sourcemap;
-            config.build.terserOptions = config.build.terserOptions ?? buildOptions.terserOptions;
-            config.build.rollupOptions.input = config.build.rollupOptions.input ?? rollupOptions.input;
-            config.build.rollupOptions.output = config.build.rollupOptions.output ?? rollupOptions.output;
-            config.build.rollupOptions.external = config.build.rollupOptions.external ?? rollupOptions.external;
-
-            if (config.build.rollupOptions.plugins && Array.isArray(config.build.rollupOptions.plugins)) {
-                config.build.rollupOptions.plugins = [...rollupPlugins, ...config.build.rollupOptions.plugins] as InputPluginOption;
-            } else {
-                config.build.rollupOptions.plugins = rollupPlugins;
+                // Ensures globals are NOT using "import" in the compiled files but are defined externally.
+                rollupPlugins.push(externalGlobals(viteGlobals, {
+                        exclude: flattenToStringArray(options.input.interactivity) /*Make sure we ignore modules*/
+                    }
+                ))
+                // Takes care of the whole bundle process on the Rollup level.
+                rollupPlugins.push(WPViteBundler(options, mode) as Plugin)
             }
         })()),
+
+        /**
+         * Config Resolved Hook.
+         *
+         * @param resolvedConfig
+         */
+        configResolved(resolvedConfig: ResolvedConfig) {
+            const VALID_ID_PREFIX = `/@id/`;
+            const reg = new RegExp(
+                `${VALID_ID_PREFIX}(${Object.keys(viteGlobals).join("|")})`,
+                "g"
+            );
+            /**
+             * Push a late plugin to rewrite the 'vite:import-analysis' prefix.
+             * Inspired by {@url https://github.com/vitejs/vite/issues/6393#issuecomment-1006819717}
+             */
+            if (resolvedConfig.plugins && Array.isArray(resolvedConfig.plugins)) {
+                resolvedConfig.plugins.push({
+                    name: "wp-vite-ignore-static-import-replace-idprefix",
+                    transform(code: string) {
+                        if (reg.test(code)) {
+                            const transformedCode = code.replace(reg, (m, s1) => s1);
+                            const map: SourceMap | null = this.getCombinedSourcemap?.() || null;
+
+                            return {code: transformedCode, map};
+                        }
+
+                        return null
+                    },
+                });
+            }
+            // Set the resolved config.
+            viteConfig = resolvedConfig;
+        },
+
+        /**
+         * Build Start Hook.
+         */
+        buildStart(buildOptions: NormalizedInputOptions) {
+            emptyOutDir(viteConfig, options)
+
+            const filePaths = {...(collectResources() ?? {}), ...(collectAssets(viteConfig) ?? {})};
+            // Types.
+            for (const type in filePaths) {
+                if (!filePaths[type]) return;
+                // File paths.
+                filePaths[type].forEach(filePath => {
+                    // Parse file path and create emit object.
+                    const file = options.source(path.basename(viteConfig.root), filePath);
+                    // Emit our assets & resources.
+                    this.emitFile({
+                        type: 'asset',
+                        fileName: options.output(`${type}/[name][ext]`, file, file.ext)
+                            .replace(/\[name\]/g, file.fileName)
+                            .replace(/\[ext\]/g, `.${file.ext}`),
+                        originalFileName: `${file.fileName}.${file.ext}`,
+                        source: fs.readFileSync(file.path),
+                        name: path.relative(path.resolve(viteConfig.root), file.path)
+                    });
+                });
+            }
+        },
+
+        /**
+         * ResolveID hook.
+         *
+         * @param id
+         */
+        resolveId(id: string) {
+            /**
+             * Rewrite the id from our static imports before 'vite:resolve' plugin
+             * transform to 'node_modules/...' during dev server.
+             * Inspired by {@url https://github.com/vitejs/vite/issues/6393#issuecomment-1006819717}
+             */
+            if (Object.keys(viteGlobals).includes(id)) {
+                return {id, external: true};
+            }
+        },
+
+        /**
+         * Load hook.
+         *
+         * @param id
+         */
+        load(id: string) {
+            /**
+             * Prevents errors in console logs during dev server when doing static import.
+             * Inspired by {@url https://github.com/vitejs/vite/issues/6393#issuecomment-1006819717}
+             */
+            if (Object.keys(viteGlobals).includes(id)) {
+                return '';
+            }
+        },
+
+
+        /**
+         * Close Bundle hook.
+         */
+        closeBundle() {
+            if (options.phpManifest && options.manifest) {
+                // Path to the manifest file.
+                const manifestPath = path.resolve(viteConfig.root, viteConfig.build.outDir, options.manifest);
+                // Create the PHP manifest if enabled.
+                if (fs.existsSync(manifestPath)) {
+                    fs.writeFileSync(
+                        path.resolve(path.dirname(manifestPath), 'manifest.php'),
+                        `<?php\n\nreturn ${varExport(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')))};\n`,
+                        'utf-8'
+                    );
+                }
+            }
+        },
+
+        /**
+         * Handle Hot Update Hook.
+         *
+         * @param file
+         * @param server
+         * @param modules
+         */
+        handleHotUpdate({file, server, modules}) {
+            // Handle hot update for PHP files.
+            if (file.endsWith('.php')) {
+                server.ws.send({type: 'full-reload', path: '*'});
+            }
+        },
     };
 }
+
+export default WPVite
