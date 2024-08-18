@@ -1,7 +1,6 @@
 {
   "name": "ottowp/wp-vite",
   "description": "A collection of back-end utilities for WordPress development with ViteJS.",
-  "version": "0.1.0",
   "license": "BSD-2-Clause",
   "autoload": {
     "psr-4": {
