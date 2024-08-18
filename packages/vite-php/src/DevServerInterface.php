@@ -98,7 +98,7 @@ interface DevServerInterface
      * Get the manifest configured by {@see self::set_manifest()}.
      * Result gets cached for second call.
      *
-     * @return array
+     * @return array<string, array<string, string|bool|string[]>>
      */
     public function get_manifest(): array;
 }

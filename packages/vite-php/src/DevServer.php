@@ -17,9 +17,9 @@ class DevServer implements DevServerInterface
     /**
      * The URL to inject into the WordPress head for Vite.js.
      *
-     * @var string
+     * @var string|null
      */
-    protected string $vite_injection_url;
+    protected ?string $vite_injection_url = null;
 
     /**
      * Vite's outDir folder.
@@ -52,16 +52,16 @@ class DevServer implements DevServerInterface
     /**
      * The Vite manifest.
      *
-     * @var array|null
+     * @var array<string, array<string, mixed>>|null
      */
-    protected ?array $vite_manifest;
+    protected ?array $vite_manifest = null;
 
     /**
      * Folder name of project within wp-content dir.
      *
-     * @var string
+     * @var string|null
      */
-    protected string $project_folder;
+    protected ?string $project_folder = null;
 
     /**
      * Type of project ('plugin' or 'theme').
@@ -71,11 +71,11 @@ class DevServer implements DevServerInterface
     protected string $project_type = 'plugin';
 
     /**
-     * Project domain URL. (eg: https://www.mysite.com or get_site_url())
+     * Project domain URL. (e.g., https://www.mysite.com or get_site_url())
      *
-     * @var string
+     * @var string|null
      */
-    protected string $project_domain;
+    protected ?string $project_domain = null;
 
     /**
      * @inheritdoc
@@ -198,7 +198,7 @@ class DevServer implements DevServerInterface
      */
     public function get_manifest(): array
     {
-        if (!isset($this->manifest)) {
+        if (!isset($this->vite_manifest)) {
             $manifest_path = $this->get_project_dir_path($this->vite_manifest_path);
             $manifest_ext  = pathinfo($manifest_path, PATHINFO_EXTENSION);
 
@@ -208,20 +208,20 @@ class DevServer implements DevServerInterface
 
             // JSON version.
             if ($manifest_ext === 'json') {
-                $this->manifest = json_decode(file_get_contents($manifest_path), true);
+                $this->vite_manifest = json_decode(file_get_contents($manifest_path), true);
 
                 if (json_last_error()) {
                     throw new \RuntimeException('Error decoding manifest JSON: ' . json_last_error_msg());
                 }
                 // PHP version.
             } elseif ($manifest_ext === 'php') {
-                $this->manifest = require $manifest_path;
+                $this->vite_manifest = require $manifest_path;
             } else {
                 throw new \RuntimeException('Unknown manifest file type.');
             }
         }
 
-        return $this->manifest;
+        return $this->vite_manifest;
     }
 
     /**
@@ -250,9 +250,9 @@ class DevServer implements DevServerInterface
     /**
      * Adds the 'dev-server-is-active' class to the body tag.
      *
-     * @param array $classes The existing body classes.
+     * @param string[] $classes The existing body classes.
      *
-     * @return array The modified body classes.
+     * @return string[] The modified body classes.
      */
     public function filter_body_class(array $classes): array
     {
@@ -306,11 +306,11 @@ class DevServer implements DevServerInterface
      * Modify the script loader src and replace it with the src path in manifest and localhost URL.
      *
      * @param string $src
-     * @param $id
+     * @param string $id
      *
      * @return string
      */
-    public function modify_script_loader_src(string $src, $id): string
+    public function modify_script_loader_src(string $src, string $id): string
     {
         if ($this->contains_out_dir_path($src)) {
 
