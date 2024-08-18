@@ -6,3 +6,4 @@ coverage/
 .phpunit.result.cache
 composer.lock
 /packages/vite/tests/build/
+vendor/
