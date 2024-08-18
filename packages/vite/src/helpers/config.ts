@@ -35,7 +35,9 @@ export const buildConfig = (config: UserConfig, options: WPViteOptions, globals:
      */
     const esBuildOptions: ESBuildOptions = {
         loader: 'jsx',
-        include: config.root? new RegExp(`/${config.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/.*\\.js$`) : [],
+        include: config.root ? new RegExp(
+            `${config.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/.*\\.(js|jsx|ts|tsx)$`
+        ) : [],
         exclude: [],
     }
 

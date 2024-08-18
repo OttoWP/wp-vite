@@ -11,6 +11,7 @@ export default defineConfig({
   },
   plugins: [
     WPVite( {
+      phpManifest: true,
       input:  {
         entries:       [
           ['*', '*.js'],

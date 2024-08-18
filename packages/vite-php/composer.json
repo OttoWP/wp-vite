@@ -1,0 +1,20 @@
+{
+  "name": "ottowp/wp-vite",
+  "description": "A collection of back-end utilities for WordPress development with ViteJS.",
+  "license": "BSD-2-Clause",
+  "autoload": {
+    "psr-4": {
+      "WPVite\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "classmap": ["src/"]
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit tests/unit"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9",
+    "brain/monkey": "^2.6"
+  }
+}
