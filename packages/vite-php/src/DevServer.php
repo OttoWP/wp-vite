@@ -103,6 +103,24 @@ class DevServer implements DevServerInterface
     /**
      * @inheritdoc
      */
+    public function config(array $config): self
+    {
+        foreach ($config as $key => $argument) {
+            $method = "set_{$key}";
+
+            if (method_exists($this, $method)) {
+                call_user_func([$this, $method], $argument);
+            } else {
+                throw new \RuntimeException(sprintf('The config "%s" does not exist.', $key));
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function set_type(string $type): self
     {
         if ($type !== 'theme' && $type !== 'plugin') {
@@ -168,7 +186,7 @@ class DevServer implements DevServerInterface
     /**
      * @inheritdoc
      */
-    public function set_client_hook_priority_level(int $level): self
+    public function set_client_hook(int $level): self
     {
         $this->vite_client_hook_priority_level = $level;
 
@@ -264,7 +282,7 @@ class DevServer implements DevServerInterface
     /**
      * Ensures that the WP import map is loaded before the Vite client script. It wasn't possible to load Vite client
      * between import map and registered modules using priority levels. You can adjust the priority levels of this
-     * hook + vite client using {@see self::set_client_hook_priority_level()}
+     * hook + vite client using {@see self::set_client_hook()}
      *
      * @return void
      */
@@ -313,7 +331,6 @@ class DevServer implements DevServerInterface
     public function modify_script_loader_src(string $src, string $id): string
     {
         if ($this->contains_out_dir_path($src)) {
-
             $out_dir_path = preg_replace('/\?.*$/', '', $src); // Remove ? params
             $out_dir_path = explode("{$this->project_folder}/{$this->vite_out_dir}/", $out_dir_path); // remove whole path until outDir.
 

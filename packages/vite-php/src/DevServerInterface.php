@@ -21,6 +21,15 @@ interface DevServerInterface
     public function register(): self;
 
     /**
+     * Configure the dev server.
+     *
+     * @param array<string, string|int> $config
+     *
+     * @return $this;
+     */
+    public function config(array $config): self;
+
+    /**
      * Sets the type of project ('plugin' or 'theme'). Default is set to "plugin".
      *
      * @param string $type
@@ -83,7 +92,7 @@ interface DevServerInterface
      *
      * @return $this
      */
-    public function set_client_hook_priority_level(int $level): self;
+    public function set_client_hook(int $level): self;
 
 
     /**
