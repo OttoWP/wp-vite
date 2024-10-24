@@ -14,7 +14,7 @@ export default defineConfig({
       phpManifest: true,
       input:  {
         entries:       [
-          ['*', '*.js'],
+          ['components', '*', '*.js'],
           ['randomPascalFolder', '**', '*.js'],
           ['blocks', '*', 'index.js'],
           ['blocks', '*', 'view.js'],

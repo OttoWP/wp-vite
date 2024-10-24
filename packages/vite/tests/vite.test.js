@@ -14,18 +14,18 @@ describe('Test expected generated build files & contents', () => {
     );
   });
 
-  it('should generate the expected frontend files with alias component', () => {
-    const frontendJsFile  = path.join(buildDir, 'frontend', 'frontend.js');
-    const frontendCssFile = path.join(buildDir, 'frontend', 'frontend.css');
+  it('should generate the expected button component files with alias component', () => {
+    const buttonJsFile  = path.join(buildDir, 'components', 'button', 'button.js');
+    const buttonCssFile = path.join(buildDir, 'components', 'button', 'button.css');
 
-    expect(fs.existsSync(frontendJsFile)).toBe(true);
-    expect(fs.existsSync(frontendCssFile)).toBe(true);
+    expect(fs.existsSync(buttonJsFile)).toBe(true);
+    expect(fs.existsSync(buttonCssFile)).toBe(true);
 
-    const jsContent  = fs.readFileSync(frontendJsFile, 'utf-8');
-    const cssContent = fs.readFileSync(frontendCssFile, 'utf-8');
+    const jsContent  = fs.readFileSync(buttonJsFile, 'utf-8');
+    const cssContent = fs.readFileSync(buttonCssFile, 'utf-8');
 
-    expect(jsContent).toContain('\'use strict\';console.log("I\'m a component that will be bundled with the main script."),console.log("I\'m the main script.");');
-    expect(cssContent).toContain('.im-a-component{color:#00f}.im-alias-component{color:#fff}.im-the-main-style{color:red}.im-the-main-style__nested{color:green}');
+    expect(jsContent).toContain('\'use strict\';console.log("I\'m a button subcomponent that will be bundled with the button component script."),console.log("I\'m the main button component.");');
+    expect(cssContent).toContain('.im-a-button-sub-component{color:#00f}.im-alias-component{color:#fff}.im-the-main-button-component{color:red}.im-the-main-button-component__nested{color:green}\n');
   });
 
   it('should generate the expected asset files', () => {
@@ -191,7 +191,7 @@ describe('Test expected generated build files & contents', () => {
   });
 
   it('should generate the expected files from pascal folders', () => {
-    const pascalCss = path.join(buildDir, 'random-pascal-folder', 'pascal-assets', 'pascal.css');
+    const pascalCss = path.join(buildDir, 'random-pascal-folder', 'pascal-assets', 'pascal-script.css');
     const pascalJs  = path.join(buildDir, 'random-pascal-folder', 'pascal-assets', 'pascal-script.js');
     const pascalPhp = path.join(buildDir, 'random-pascal-folder', 'pascal-assets', 'pascal-script.asset.php');
 
@@ -272,27 +272,30 @@ describe('Test expected unminified files', () => {
     execSync('yarn test-build-dev', {cwd: rootDir, stdio: 'inherit'});
   });
 
-  it('should generate the expected frontend unminified files', () => {
-    const frontendJsFile  = path.join(buildDir, 'frontend', 'frontend.js');
-    const frontendCssFile = path.join(buildDir, 'frontend', 'frontend.css');
+  it('should generate the expected button component unminified files', () => {
+    const buttonJsFile  = path.join(buildDir, 'components', 'button', 'button.js');
+    const buttonCssFile = path.join(buildDir, 'components', 'button', 'button.css');
 
-    expect(fs.existsSync(frontendJsFile)).toBe(true);
-    expect(fs.existsSync(frontendCssFile)).toBe(true);
+    expect(fs.existsSync(buttonJsFile)).toBe(true);
+    expect(fs.existsSync(buttonCssFile)).toBe(true);
 
-    const jsContent  = fs.readFileSync(frontendJsFile, 'utf-8');
-    const cssContent = fs.readFileSync(frontendCssFile, 'utf-8');
+    const jsContent  = fs.readFileSync(buttonJsFile, 'utf-8');
+    const cssContent = fs.readFileSync(buttonCssFile, 'utf-8');
 
-    expect(jsContent).toContain('(() => {\'use strict\';console.log("I\'m a component that will be bundled with the main script.");\n' +
-        'console.log("I\'m the main script.");');
-    expect(cssContent).toContain('.im-a-component{\n' +
+    expect(jsContent).toContain('(() => {\'use strict\';console.log("I\'m a button subcomponent that will be bundled with the button component script.");\n' +
+        'console.log("I\'m the main button component.");');
+    expect(cssContent).toContain('.im-a-button-sub-component{\n' +
         '    color: blue;\n' +
         '}\n' +
         '.im-alias-component {\n' +
         '    color: white;\n' +
         '}\n' +
-        '.im-the-main-style {\n' +
+        '.im-the-main-button-component {\n' +
         '    color: red;\n' +
-        '}');
+        '}\n' +
+        '.im-the-main-button-component__nested {\n' +
+        '        color: green;\n' +
+        '    }');
   });
 
   it('should generate the expected unminified interactivity block files', () => {
@@ -310,7 +313,8 @@ describe('Test expected unminified files', () => {
     const indexCssContent = fs.readFileSync(indexCss, 'utf-8');
     const styleCssContent = fs.readFileSync(styleCss, 'utf-8');
     const viewJsContent   = fs.readFileSync(viewJs, 'utf-8');
-
+    const viewPhpContent   = fs.readFileSync(viewPhp, 'utf-8');
+    expect(viewPhpContent).toContain('<?php return array(\'dependencies\' => array(\'@wordpress/interactivity\' )');
     expect(indexCssContent).toContain('/**\n' +
         ' * The following styles get applied inside the editor only.\n' +
         ' *\n' +

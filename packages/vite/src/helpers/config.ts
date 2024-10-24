@@ -60,6 +60,7 @@ export const buildConfig = (config: UserConfig, options: WPViteOptions, globals:
         manifest: true,
         target: 'es2015',
         minify: mode === 'development' ? false : 'terser',
+        assetsInlineLimit: 0,
         terserOptions: {
             output: {
                 comments: /translators:/i,
@@ -92,6 +93,7 @@ export const buildConfig = (config: UserConfig, options: WPViteOptions, globals:
             },
             format: 'es',
             globals: globals,
+            generatedCode: 'es2015'
         },
         external: Object.keys(globals),
     }

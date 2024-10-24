@@ -8,7 +8,14 @@ import {parseFilePath} from '../helpers/strings';
 import {varExport} from '../helpers/object';
 import {flattenToStringArray} from "../helpers/arrays";
 import {ResolvedConfig, Plugin} from "vite";
-import {GlobalsOption, NormalizedInputOptions, NormalizedOutputOptions, OutputBundle, OutputChunk} from "rollup";
+import {
+    GlobalsOption,
+    ModuleInfo,
+    NormalizedInputOptions,
+    NormalizedOutputOptions, OutputAsset,
+    OutputBundle,
+    OutputChunk, OutputOptions
+} from "rollup";
 
 export interface WPViteBundlerOptions {
 
@@ -133,6 +140,7 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
      * Collect styles.
      */
     const styles: { [cssOrigin: string]: string } = {};
+    const cssMap = {};
 
     /**
      * Empties out dir with rules.
@@ -297,19 +305,23 @@ ${options.externalWrapper.footer}
         if (module.viteMetadata && options.css) {
             const cssExt = options.css;
 
-            Array.from(module.viteMetadata.importedCss).forEach(cssFile => {
-                const cssFileName = cssFile.split('/').pop()?.split('-')[0] + `.${cssExt}`;
-                const cssOrigin = cssFile;
+            Array.from(module.viteMetadata.importedCss).forEach(cssPath => {
+                const cssFile = cssPath.split('/').pop();
+                if (cssFile) {
+                    const cssFileLastHyphenIndex = cssFile.lastIndexOf('-');
+                    const cssFileName = cssFile.substring(0, cssFileLastHyphenIndex) + `.${cssExt}`;
+                    const cssOrigin = cssPath;
 
-                if (!styles[cssOrigin]) {
-                    styles[cssOrigin] = path.dirname(module.fileName) + '/' + cssFileName.replace(cssExt, 'css');
-                }
+                    if (!styles[cssOrigin]) {
+                        styles[cssOrigin] = path.dirname(module.fileName) + '/' + cssFileName.replace(cssExt, 'css');
+                    }
 
-                if (module.viteMetadata?.importedCss) {
-                    module.viteMetadata.importedCss.delete(cssFile);
-                }
-                if (module.viteMetadata?.importedAssets) {
-                    module.viteMetadata.importedAssets.add(styles[cssOrigin]);
+                    if (module.viteMetadata?.importedCss) {
+                        module.viteMetadata.importedCss.delete(cssPath);
+                    }
+                    if (module.viteMetadata?.importedAssets) {
+                        module.viteMetadata.importedAssets.add(styles[cssOrigin]);
+                    }
                 }
             });
         }
@@ -321,13 +333,17 @@ ${options.externalWrapper.footer}
      * @param bundle
      */
     const setCSsOutPath = (bundle: OutputBundle) => {
+
         Object.values(bundle).forEach(module => {
             if (module.type === 'asset') {
-
                 if (styles[module.fileName]) {
                     module.fileName = styles[module.fileName];
+                    module.names = [module.fileName];
                 }
             }
+            // if (module.fileName.includes('pascal')) {
+            //     console.log(module)
+            // }
         });
     }
 
@@ -362,6 +378,7 @@ ${options.externalWrapper.footer}
             emptyOutDir(viteConfig)
 
             const filePaths = {...(collectResources() ?? {}), ...(collectAssets(viteConfig) ?? {})};
+
             // Types.
             for (const type in filePaths) {
                 if (!filePaths[type]) return;
@@ -369,18 +386,27 @@ ${options.externalWrapper.footer}
                 filePaths[type].forEach(filePath => {
                     // Parse file path and create emit object.
                     const file = options.source(path.basename(viteConfig.root), filePath);
+                    const fileName = options.output(`${type}/[name][ext]`, file, file.ext)
+                        .replace(/\[name\]/g, file.fileName)
+                        .replace(/\[ext\]/g, `.${file.ext}`);
+                    const name = path.relative(path.resolve(viteConfig.root), file.path);
+
                     // Emit our assets & resources.
                     this.emitFile({
                         type: 'asset',
-                        fileName: options.output(`${type}/[name][ext]`, file, file.ext)
-                            .replace(/\[name\]/g, file.fileName)
-                            .replace(/\[ext\]/g, `.${file.ext}`),
-                        originalFileName: `${file.fileName}.${file.ext}`,
+                        fileName: fileName,
+                        originalFileName: name,
                         source: fs.readFileSync(file.path),
-                        name: path.relative(path.resolve(viteConfig.root), file.path)
+                        name: name
                     });
                 });
             }
+        },
+
+        async moduleParsed(moduleInfo: ModuleInfo) {
+            // if (moduleInfo.id.includes('.pcss')) {
+            //     console.log(moduleInfo)
+            // }
         },
 
         /**
