@@ -140,7 +140,6 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
      * Collect styles.
      */
     const styles: { [cssOrigin: string]: string } = {};
-    const cssMap = {};
 
     /**
      * Empties out dir with rules.
@@ -213,6 +212,16 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
     const createPhpAssetFile = (module: OutputChunk, bundleOptions: NormalizedOutputOptions, dependencies: string[]) => {
         if (!bundleOptions.dir || !module.facadeModuleId) return;
 
+        const assets: string[] = [];
+
+        if (module.viteMetadata && module.viteMetadata.importedAssets) {
+            module.viteMetadata.importedAssets.forEach(function (value) {
+                if (value.includes('css')) {
+                    assets.push(value)
+                }
+            })
+        }
+
         const outPath = path.resolve(bundleOptions.dir, path.dirname(module.fileName));
         const file = fs.readFileSync(module.facadeModuleId);
         const hash = createHash('sha256').update(file).digest('hex').slice(0, 20)
@@ -220,7 +229,8 @@ export function WPViteBundler(userOptions: Partial<WPViteBundlerOptions>, mode: 
         fs.mkdirSync(outPath, {recursive: true});
         const phpArrayContent = '<?php return ' + varExport({
             'dependencies': dependencies,
-            'version': hash
+            'version': hash,
+            'assets': assets
         }, false) + ';';
         fs.writeFileSync(path.join(outPath, `${module.name}.asset.php`), phpArrayContent, 'utf-8');
     }
@@ -306,22 +316,22 @@ ${options.externalWrapper.footer}
             const cssExt = options.css;
 
             Array.from(module.viteMetadata.importedCss).forEach(cssPath => {
-                const cssFile = cssPath.split('/').pop();
-                if (cssFile) {
-                    const cssFileLastHyphenIndex = cssFile.lastIndexOf('-');
-                    const cssFileName = cssFile.substring(0, cssFileLastHyphenIndex) + `.${cssExt}`;
-                    const cssOrigin = cssPath;
+                const cssOrigin = cssPath;
+                let cssFileName = cssPath;
 
-                    if (!styles[cssOrigin]) {
-                        styles[cssOrigin] = path.dirname(module.fileName) + '/' + cssFileName.replace(cssExt, 'css');
-                    }
+                if (cssPath.includes('assets/')) {
+                    cssFileName = path.dirname(module.fileName) + '/' + cssPath.split('/').pop()?.replace(/\.hash.*$/, '') + '.css';
+                }
 
-                    if (module.viteMetadata?.importedCss) {
-                        module.viteMetadata.importedCss.delete(cssPath);
-                    }
-                    if (module.viteMetadata?.importedAssets) {
-                        module.viteMetadata.importedAssets.add(styles[cssOrigin]);
-                    }
+                if (!styles[cssOrigin]) {
+                    styles[cssOrigin] = cssFileName;
+                }
+
+                if (module.viteMetadata?.importedCss) {
+                    module.viteMetadata.importedCss.delete(cssPath);
+                }
+                if (module.viteMetadata?.importedAssets) {
+                    module.viteMetadata.importedAssets.add(styles[cssOrigin]);
                 }
             });
         }
@@ -341,9 +351,6 @@ ${options.externalWrapper.footer}
                     module.names = [module.fileName];
                 }
             }
-            // if (module.fileName.includes('pascal')) {
-            //     console.log(module)
-            // }
         });
     }
 
@@ -403,12 +410,6 @@ ${options.externalWrapper.footer}
             }
         },
 
-        async moduleParsed(moduleInfo: ModuleInfo) {
-            // if (moduleInfo.id.includes('.pcss')) {
-            //     console.log(moduleInfo)
-            // }
-        },
-
         /**
          * Generate Bundle Hook.
          *
@@ -419,6 +420,7 @@ ${options.externalWrapper.footer}
             const globals: GlobalsOption = getGlobalsFromConfig(viteConfig)
 
             for (const module of Object.values(bundle)) {
+
                 if (module.type === 'chunk' && module.facadeModuleId) {
                     const isCssChunk: boolean = !module.fileName.endsWith('.js');
                     const isInteractivity: boolean = "interactivity" in options.input
@@ -436,8 +438,8 @@ ${options.externalWrapper.footer}
 
                     const dependencies: string[] = createDependencyArray(module, isInteractivity, globals, externals);
 
-                    createPhpAssetFile(module, bundleOptions, dependencies)
                     setImportedCss(module)
+                    createPhpAssetFile(module, bundleOptions, dependencies)
                     removeEmptyCssComment(module)
                 }
             }

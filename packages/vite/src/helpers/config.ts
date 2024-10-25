@@ -1,8 +1,10 @@
 import path from "path";
 import {flattenToStringArray} from "./arrays";
-import {GlobalsOption, RollupOptions} from "rollup";
+import {GlobalsOption, PreRenderedAsset, PreRenderedChunk, RollupOptions} from "rollup";
 import {UserConfig, BuildOptions, CSSOptions, DepOptimizationOptions, ESBuildOptions, ServerOptions} from "vite";
 import {WPViteOptions} from "../index";
+import {scanPathForExtensionFiles} from "./scan";
+
 
 /**
  * Builds the config.
@@ -14,6 +16,9 @@ import {WPViteOptions} from "../index";
  * @param mode
  */
 export const buildConfig = (config: UserConfig, options: WPViteOptions, globals: GlobalsOption, command: string, mode: string) => {
+    const projectRootPath = path.resolve(options.dir, (config.root ?? ''))
+    const projectCssFileMap = scanPathForExtensionFiles(projectRootPath, options.css);
+
     /**
      * CSS Options.
      */
@@ -90,6 +95,27 @@ export const buildConfig = (config: UserConfig, options: WPViteOptions, globals:
                 } else {
                     return `js/[name].[hash].js`
                 }
+            },
+            chunkFileNames: (chunkInfo: PreRenderedChunk) => {
+                if (config.root && options.output && options.source && chunkInfo.moduleIds && chunkInfo.moduleIds[0]) {
+                    return options.output(`js/[name].[hash].js`, options.source(config.root, chunkInfo.moduleIds[0]), 'js');
+                } else {
+                    return  'js/[name].[hash].js';
+                }
+            },
+            assetFileNames: (assetInfo: PreRenderedAsset) => {
+                if (config.root) {
+                    for (const [key, value] of Object.entries(projectCssFileMap)) {
+                        const fileContents = value + '/*$vite$:1*/';
+                        const relativePath = key.replace(projectRootPath, "").slice(1);
+                        const folderPath = path.dirname(relativePath)
+
+                        if (fileContents === assetInfo.source) {
+                            return `${folderPath}/[name][extname]`
+                        }
+                    }
+                }
+                return "assets/[name].hash[hash][extname]" //Prefixed with "hash" intentionally for easier splitting
             },
             format: 'es',
             globals: globals,

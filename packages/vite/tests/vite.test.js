@@ -96,13 +96,13 @@ describe('Test expected generated build files & contents', () => {
 
   it('should generate the expected interactivity block files', () => {
     const blockJson = path.join(buildDir, 'blocks', 'example-interactivity-block', 'block.json');
+    const indexPhp  = path.join(buildDir, 'blocks', 'example-interactivity-block', 'index.asset.php');
     const indexCss  = path.join(buildDir, 'blocks', 'example-interactivity-block', 'index.css');
     const indexJs   = path.join(buildDir, 'blocks', 'example-interactivity-block', 'index.js');
-    const indexPhp  = path.join(buildDir, 'blocks', 'example-interactivity-block', 'index.asset.php');
-    const styleCss  = path.join(buildDir, 'blocks', 'example-interactivity-block', 'style.css');
-    const viewJs    = path.join(buildDir, 'blocks', 'example-interactivity-block', 'view.js');
-    const viewPhp   = path.join(buildDir, 'blocks', 'example-interactivity-block', 'view.asset.php');
     const renderPhp = path.join(buildDir, 'blocks', 'example-interactivity-block', 'render.php');
+    const styleCss  = path.join(buildDir, 'blocks', 'example-interactivity-block', 'style.css');
+    const viewPhp   = path.join(buildDir, 'blocks', 'example-interactivity-block', 'view.asset.php');
+    const viewJs    = path.join(buildDir, 'blocks', 'example-interactivity-block', 'view.js');
 
     [blockJson, indexCss, indexPhp, indexJs, styleCss, viewJs, viewPhp, renderPhp].forEach(assetPath => expect(fs.existsSync(assetPath)).toBe(true));
 
