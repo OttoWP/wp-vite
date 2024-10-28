@@ -15,7 +15,13 @@ import {scanPathForExtensionFiles} from "./scan";
  * @param command
  * @param mode
  */
-export const buildConfig = (config: UserConfig, options: WPViteOptions, globals: GlobalsOption, command: string, mode: string) => {
+export const buildConfig = (
+    config: UserConfig,
+    options: WPViteOptions,
+    globals: GlobalsOption,
+    command: string,
+    mode: string
+) => {
     const projectRootPath = path.resolve(options.dir, (config.root ?? ''))
     const projectCssFileMap = scanPathForExtensionFiles(projectRootPath, options.css);
 
@@ -63,7 +69,7 @@ export const buildConfig = (config: UserConfig, options: WPViteOptions, globals:
         outDir: '../build',
         emptyOutDir: !(options.keepOutDir != null && options.keepOutDir.length > 0),
         manifest: true,
-        target: 'es2015',
+        target: 'es2017',
         minify: mode === 'development' ? false : 'terser',
         assetsInlineLimit: 0,
         terserOptions: {
@@ -119,7 +125,6 @@ export const buildConfig = (config: UserConfig, options: WPViteOptions, globals:
             },
             format: 'es',
             globals: globals,
-            generatedCode: 'es2015'
         },
         external: Object.keys(globals),
     }

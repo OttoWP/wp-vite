@@ -272,7 +272,7 @@ describe('Test expected unminified files', () => {
     execSync('yarn test-build-dev', {cwd: rootDir, stdio: 'inherit'});
   });
 
-  it('should generate the expected button component unminified files', () => {
+  it('should generate the expected button component files & contents', () => {
     const buttonJsFile  = path.join(buildDir, 'components', 'button', 'button.js');
     const buttonCssFile = path.join(buildDir, 'components', 'button', 'button.css');
 
@@ -281,6 +281,9 @@ describe('Test expected unminified files', () => {
 
     const jsContent  = fs.readFileSync(buttonJsFile, 'utf-8');
     const cssContent = fs.readFileSync(buttonCssFile, 'utf-8');
+
+    expect(jsContent).not.toContain('__commonJS');
+    expect(jsContent).not.toContain('__require');
 
     expect(jsContent).toContain('(() => {\'use strict\';console.log("I\'m a button subcomponent that will be bundled with the button component script.");\n' +
         'console.log("I\'m the main button component.");');
@@ -298,7 +301,7 @@ describe('Test expected unminified files', () => {
         '    }');
   });
 
-  it('should generate the expected unminified interactivity block files', () => {
+  it('should generate the expected unminified interactivity block files & contents', () => {
     const blockJson = path.join(buildDir, 'blocks', 'example-interactivity-block', 'block.json');
     const indexCss  = path.join(buildDir, 'blocks', 'example-interactivity-block', 'index.css');
     const indexJs   = path.join(buildDir, 'blocks', 'example-interactivity-block', 'index.js');
@@ -365,6 +368,18 @@ describe('Test expected unminified files', () => {
         '  }\n' +
         '});');
   });
+
+  it('should generate the expected async util output without commonJS dependency', () => {
+    const asyncJsFile  = path.join(buildDir, 'components', 'utils', 'async.js');
+
+    expect(fs.existsSync(asyncJsFile)).toBe(true);
+
+    const jsContent  = fs.readFileSync(asyncJsFile, 'utf-8');
+
+    expect(jsContent).not.toContain('__commonJS');
+    expect(jsContent).not.toContain('__require');
+  });
+
 
   afterAll(() => {
     // Clean up the build directory

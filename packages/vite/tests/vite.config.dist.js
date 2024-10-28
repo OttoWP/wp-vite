@@ -15,6 +15,7 @@ export default defineConfig({
         entries:       [
           ['*', '*.js'],
           ['components', '*', '*.js'],
+          ['utils', '*', '*.js'],
           ['randomPascalFolder', '**', '*.js'],
           ['blocks', '*', 'index.js'],
           ['blocks', '*', 'view.js'],
